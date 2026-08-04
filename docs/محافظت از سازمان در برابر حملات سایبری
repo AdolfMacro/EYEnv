@@ -1,0 +1,150 @@
+محافظت از سازمان در برابر حملات سایبری
+│
+├── 1. شناخت سازمان (Asset & Risk Management)
+│   │
+│   ├── چه سیستم‌هایی داریم؟
+│   ├── چه سرویس‌هایی اینترنتی هستند؟
+│   ├── چه اطلاعاتی مهم هستند؟
+│   ├── چه کاربران و دسترسی‌هایی داریم؟
+│   ├── سطح ریسک هر دارایی
+│   └── اولویت‌بندی حفاظت
+│
+├── 2. Network Defense ⭐⭐⭐
+│   │
+│   ├── Network Architecture
+│   ├── Segmentation
+│   │   ├── VLAN
+│   │   ├── DMZ
+│   │   └── Internal Zones
+│   │
+│   ├── Firewall
+│   │   ├── Rule Management
+│   │   ├── Logging
+│   │   └── NAT
+│   │
+│   ├── IDS / IPS
+│   │
+│   ├── Network Monitoring
+│   │   ├── Traffic Analysis
+│   │   ├── Packet Inspection
+│   │   └── Anomaly Detection
+│   │
+│   └── Wireless Security
+│       ├── Rogue AP
+│       ├── WPA2/WPA3
+│       ├── Evil Twin
+│       ├── Deauthentication
+│       └── Signal Analysis
+│
+├── 3. Endpoint Security
+│   │
+│   ├── Windows Security
+│   ├── Linux Security
+│   ├── Mac Security
+│   │
+│   ├── Hardening
+│   │   ├── Disable unnecessary services
+│   │   ├── Patch management
+│   │   └── Secure configuration
+│   │
+│   ├── Antivirus
+│   ├── EDR/XDR
+│   └── Device Control
+│
+├── 4. Identity Security ⭐⭐⭐
+│   │
+│   ├── User Management
+│   ├── Authentication
+│   ├── MFA
+│   ├── Privileged Access Management
+│   ├── Active Directory Security
+│   ├── Least Privilege
+│   └── Account Monitoring
+│
+├── 5. Application Security
+│   │
+│   ├── Web Application Risks
+│   ├── API Security
+│   ├── Authentication Bugs
+│   ├── Injection Attacks
+│   ├── Secure Coding
+│   └── Code Review
+│
+├── 6. Cloud Security
+│   │
+│   ├── AWS/Azure Security
+│   ├── Cloud IAM
+│   ├── Containers
+│   ├── Kubernetes
+│   ├── Secrets Management
+│   └── Cloud Monitoring
+│
+├── 7. Logging & Visibility ⭐⭐⭐
+│   │
+│   ├── Centralized Logging
+│   │
+│   ├── SIEM
+│   │   ├── Elastic
+│   │   ├── Splunk
+│   │   └── Sentinel
+│   │
+│   ├── Log Sources
+│   │   ├── Firewall Logs
+│   │   ├── Server Logs
+│   │   ├── Authentication Logs
+│   │   └── Application Logs
+│   │
+│   └── Detection Rules
+│
+├── 8. Incident Response ⭐⭐⭐
+│   │
+│   ├── Detection
+│   ├── Analysis
+│   ├── Containment
+│   ├── Eradication
+│   ├── Recovery
+│   └── Lessons Learned
+│
+├── 9. Threat Intelligence
+│   │
+│   ├── شناخت مهاجم
+│   ├── IOC
+│   │   ├── IP
+│   │   ├── Domain
+│   │   ├── Hash
+│   │   └── Malware Signature
+│   │
+│   ├── MITRE ATT&CK
+│   ├── TTP Analysis
+│   └── Threat Hunting
+│
+├── 10. Vulnerability Management
+│   │
+│   ├── Asset Discovery
+│   ├── Vulnerability Scanning
+│   ├── CVE Analysis
+│   ├── Patch Management
+│   └── Risk Prioritization
+│
+├── 11. Backup & Recovery
+│   │
+│   ├── Backup Strategy
+│   ├── Ransomware Defense
+│   ├── Disaster Recovery
+│   └── Business Continuity
+│
+├── 12. Human Security
+│   │
+│   ├── Phishing Defense
+│   ├── Security Awareness
+│   ├── Social Engineering
+│   └── Insider Threat
+│
+└── 13. Security Architecture
+    │
+    ├── Zero Trust
+    ├── Defense in Depth
+    ├── Security Policies
+    ├── ISO 27001
+    ├── NIST Framework
+    └── Security Governance
