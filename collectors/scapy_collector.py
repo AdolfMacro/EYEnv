@@ -145,22 +145,15 @@ class ScapyCollector:
         return flows
 
     def packet_to_flow(self, packet):
-
-
         if IP in packet:
-
-
+            payload = b""
+            if Raw in packet:
+                payload = bytes(packet[Raw].load)
             return TrafficFlow(
-
                 source=packet[IP].src,
-
                 destination=packet[IP].dst,
-
                 protocol=packet[IP].proto,
-
-                size=len(packet)
-
+                size=len(packet),
+                payload=payload,
             )
-
-
         return None

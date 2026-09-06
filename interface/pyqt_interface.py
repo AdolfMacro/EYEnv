@@ -1178,7 +1178,11 @@ class MainWindow(QMainWindow):
 
                 anomaly_result = self.anomaly_detector.detect(self.current_segment.name, flow, features)
                 alerts = self.alert_engine.evaluate(
-                    self.current_segment.name, flow, features, anomaly_result
+                    self.current_segment.name,
+                    flow,
+                    features,
+                    anomaly_result,
+                    payload=getattr(flow, "payload", None),
                 )
                 if alerts:
                     self.update_alerts()
