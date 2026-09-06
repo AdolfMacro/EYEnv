@@ -843,9 +843,9 @@ class MainWindow(QMainWindow):
         alerts_group_layout.setSpacing(8)
 
         self.alerts_table = QTableWidget()
-        self.alerts_table.setColumnCount(5)
+        self.alerts_table.setColumnCount(6)
         self.alerts_table.setHorizontalHeaderLabels(
-            ["Severity", "Category", "Description", "Score", "Time"]
+            ["Severity", "Category", "Description", "Score", "Time", "ID"]
         )
         self.alerts_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.alerts_table.verticalHeader().setVisible(False)
@@ -856,6 +856,8 @@ class MainWindow(QMainWindow):
                 alternate-background-color: {HackerPalette.PANEL};
             }}
         """)
+        self.alerts_table.hideColumn(5)
+        self.alerts_table.cellDoubleClicked.connect(self.show_alert_detail)
         alerts_group_layout.addWidget(self.alerts_table)
 
         alerts_layout.addWidget(alerts_group)
@@ -866,6 +868,9 @@ class MainWindow(QMainWindow):
         btn_layout.addWidget(btn_ack)
         btn_layout.addStretch()
         alerts_layout.addLayout(btn_layout)
+
+        self.alerts_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.alerts_table.customContextMenuRequested.connect(self.show_alerts_context_menu)
 
         right_panel.addTab(self.alerts_tab, "Alerts")
 
@@ -1074,21 +1079,99 @@ class MainWindow(QMainWindow):
             self.alerts_table.setItem(row, 2, QTableWidgetItem(alert.get("description", "")))
             self.alerts_table.setItem(row, 3, QTableWidgetItem(str(alert.get("score", 0.0))))
             self.alerts_table.setItem(row, 4, QTableWidgetItem(alert.get("timestamp", "")))
+            alert_id_item = QTableWidgetItem(str(alert.get("id", "")))
+            self.alerts_table.setItem(row, 5, alert_id_item)
+            self.alerts_table.item(row, 5).setData(Qt.ItemDataRole.UserRole, alert)
 
     def acknowledge_alert(self):
         current_row = self.alerts_table.currentRow()
         if current_row < 0:
             return
-        item = self.alerts_table.item(current_row, 4)
-        if not item:
+        alert_item = self.alerts_table.item(current_row, 5)
+        if not alert_item:
             return
-        timestamp = item.text()
-        alerts = self.alert_engine.get_recent_alerts(limit=200)
-        for alert in alerts:
-            if alert.get("timestamp") == timestamp:
-                self.storage.acknowledge_alert(alert.get("id", 0))
-                break
+        alert_data = alert_item.data(Qt.ItemDataRole.UserRole)
+        if alert_data:
+            alert_id = alert_data.get("id")
+            if alert_id:
+                self.storage.acknowledge_alert(alert_id)
         self.update_alerts()
+
+    def show_alert_detail(self):
+        current_row = self.alerts_table.currentRow()
+        if current_row < 0:
+            return
+        alert_item = self.alerts_table.item(current_row, 5)
+        if not alert_item:
+            return
+        alert_data = alert_item.data(Qt.ItemDataRole.UserRole)
+        if not alert_data:
+            return
+
+        dialog = AlertDetailDialog(alert_data, self)
+        flow_id = alert_data.get("flow_id")
+        if flow_id and self.storage:
+            features = self.storage.get_features_for_flow(flow_id)
+            if features:
+                feature_names = features.get("feature_names", [])
+                feature_values = features.get("features", [])
+                payload_text = ""
+                for name, value in zip(feature_names, feature_values):
+                    payload_text += f"{name}: {value}\n"
+                dialog.payload_text.setText(payload_text)
+        dialog.exec()
+
+    def show_alerts_context_menu(self, position):
+        current_row = self.alerts_table.currentRow()
+        if current_row < 0:
+            return
+        alert_item = self.alerts_table.item(current_row, 5)
+        if not alert_item:
+            return
+        alert_data = alert_item.data(Qt.ItemDataRole.UserRole)
+        if not alert_data:
+            return
+
+        menu = QMenu()
+        menu.setStyleSheet(f"""
+            QMenu {{
+                background: {HackerPalette.PANEL};
+                color: {HackerPalette.TEXT};
+                border: 1px solid {HackerPalette.BORDER};
+                padding: 4px;
+            }}
+            QMenu::item {{
+                padding: 8px 12px;
+            }}
+            QMenu::item:selected {{
+                background: {HackerPalette.PRIMARY_DIM};
+                color: {HackerPalette.BACKGROUND};
+            }}
+        """)
+
+        detail_action = menu.addAction("View Details")
+        fp_action = menu.addAction("Mark as False Positive")
+        tp_action = menu.addAction("Mark as True Positive")
+        ack_action = menu.addAction("Acknowledge")
+
+        action = menu.exec(self.alerts_table.viewport().mapToGlobal(position))
+        if action == detail_action:
+            self.show_alert_detail()
+        elif action == fp_action:
+            self._label_alert(alert_data, "false_positive")
+        elif action == tp_action:
+            self._label_alert(alert_data, "true_positive")
+        elif action == ack_action:
+            self.acknowledge_alert()
+
+    def _label_alert(self, alert_data, label):
+        flow_id = alert_data.get("flow_id")
+        if flow_id and self.storage:
+            self.storage.add_label(flow_id, label)
+            self.capture_log.append_log(
+                f"Alert labeled as {label}: {alert_data.get('description', '')}",
+                HackerPalette.SUCCESS,
+            )
 
     def start_capture(self):
         if not self.current_segment:
@@ -1355,6 +1438,80 @@ class MainWindow(QMainWindow):
         if self.discover_thread and self.discover_thread.isRunning():
             self.discover_thread.wait(2000)
         event.accept()
+
+
+class AlertDetailDialog(QDialog):
+    def __init__(self, alert, parent=None):
+        super().__init__(parent)
+        self.alert = alert
+        self.setWindowTitle("Alert Details")
+        self.setFixedWidth(600)
+        layout = QVBoxLayout(self)
+
+        form = QFormLayout()
+        form.addRow("Severity:", QLabel(alert.get("severity", "")))
+        form.addRow("Category:", QLabel(alert.get("category", "")))
+        form.addRow("Score:", QLabel(str(alert.get("score", 0.0))))
+        form.addRow("Time:", QLabel(alert.get("timestamp", "")))
+        form.addRow("Description:", QLabel(alert.get("description", "")))
+        layout.addLayout(form)
+
+        if alert.get("flow_id"):
+            flow_layout = QVBoxLayout()
+            flow_layout.addWidget(QLabel("Flow Information:"))
+            flow_text = QTextEdit()
+            flow_text.setReadOnly(True)
+            flow_text.setText(
+                f"Flow ID: {alert.get('flow_id')}\n"
+                f"Segment: {alert.get('segment_id', 'N/A')}"
+            )
+            flow_layout.addWidget(flow_text)
+            layout.addLayout(flow_layout)
+
+        payload_group = QGroupBox("Payload")
+        payload_layout = QVBoxLayout(payload_group)
+        self.payload_text = QTextEdit()
+        self.payload_text.setReadOnly(True)
+        self.payload_text.setStyleSheet(f"""
+            QTextEdit {{
+                background: {HackerPalette.BACKGROUND};
+                color: {HackerPalette.PRIMARY};
+                font-family: {HackerPalette.FONT_MONO};
+                font-size: 11px;
+                border: 1px solid {HackerPalette.BORDER};
+                border-radius: {HackerPalette.RADIUS}px;
+                padding: 8px;
+            }}
+        """)
+        payload_layout.addWidget(self.payload_text)
+        layout.addWidget(payload_group)
+
+        btn_layout = QHBoxLayout()
+        btn_fp = QPushButton("Mark False Positive")
+        btn_fp.clicked.connect(lambda: self._label("false_positive"))
+        btn_tp = QPushButton("Mark True Positive")
+        btn_tp.clicked.connect(lambda: self._label("true_positive"))
+        btn_close = QPushButton("Close")
+        btn_close.clicked.connect(self.accept)
+        btn_layout.addWidget(btn_fp)
+        btn_layout.addWidget(btn_tp)
+        btn_layout.addWidget(btn_close)
+        layout.addLayout(btn_layout)
+
+    def set_payload(self, payload: bytes):
+        if payload:
+            hex_text = payload.hex()
+            ascii_text = payload.decode("utf-8", errors="replace")
+            display = f"HEX:\n{hex_text}\n\nASCII:\n{ascii_text}"
+            self.payload_text.setText(display)
+        else:
+            self.payload_text.setText("No payload available")
+
+    def _label(self, label: str):
+        flow_id = self.alert.get("flow_id")
+        if flow_id and self.parent() and hasattr(self.parent(), "storage"):
+            self.parent().storage.add_label(flow_id, label)
+        self.accept()
 
 
 def run_gui():

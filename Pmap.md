@@ -767,23 +767,48 @@ Backend:
 | Anomaly Detector | ✅ Done | Statistical + rule-based |
 | Payload Inspector | ✅ Done | Credentials, suspicious patterns |
 | Alert Engine | ✅ Done | Severity scoring, GUI integration |
-| GUI Integration | ✅ Done | Alerts tab, real-time updates |
+| GUI Integration | ✅ Done | Alerts tab, detail dialog, context menu, feedback labeling |
 | Model Management | ⏳ Planned | MLflow, A/B testing |
-| Feedback Loop | ⏳ Planned | Labeling UI, retraining |
+| Feedback Loop | 🚧 Partial | Labeling UI done, retraining pending |
 
-**Completed:** 7/10 core tasks  
-**Estimated remaining:** 3-4 days for Phase 4
+**Completed:** 8/10 core tasks  
+**Estimated remaining:** 2-3 days for Phase 4 completion
 
 ---
 
 ## Next Steps
 
 1. **Complete API implementation** — connect FastAPI endpoints to storage
-2. **Add AlertDetailDialog** — drill-down into alert details with flow info
-3. **Add PayloadViewer** — hex/ASCII view of suspicious packets
-4. **Implement feedback loop** — labeling UI for true/false positives
-5. **Add model management** — MLflow integration
-6. **Testing** — end-to-end testing with real traffic
+2. **Add PayloadViewer** — hex/ASCII view of suspicious packets
+3. **Add model management** — MLflow integration
+4. **Testing** — end-to-end testing with real traffic
+
+---
+
+# 16. GUI Components
+
+## Alerts Tab
+**Location:** `interface/pyqt_interface.py`
+
+Components:
+- `AlertsTab` — list of active alerts with severity colors
+- `AlertDetailDialog` — drill-down into alert details with flow info
+- Context menu — right-click for quick actions
+- Double-click — open alert details
+- Acknowledge button — mark alerts as reviewed
+
+Features:
+- Real-time alert updates during capture
+- Severity-based color coding
+- Hidden alert ID column for data storage
+- Feedback labeling (true/false positive)
+- Payload/feature inspection in detail view
+
+## Context Menu Actions
+- View Details — opens AlertDetailDialog
+- Mark as False Positive — labels alert for model training
+- Mark as True Positive — labels alert for model training
+- Acknowledge — marks alert as reviewed
 
 ---
 
