@@ -1,4 +1,4 @@
-from scapy.all import sniff, IP, ARP, Ether, srp
+from scapy.all import sniff, IP, ARP, Ether, srp, Raw
 
 from models.traffic import TrafficFlow
 from models.node import NetworkNode

@@ -427,11 +427,22 @@ class MainWindow(QMainWindow):
         self.current_segment = None
         self.capture_thread = None
         self.discover_thread = None
+        self._last_gui_update = 0
+        self._gui_update_interval_ms = 200
+        self._flow_counter = 0
+        self._max_flows_in_memory = 5000
 
         self.storage = DataStore()
         self.feature_extractor = FeatureExtractor()
         self.anomaly_detector = AnomalyDetector(self.storage)
         self.alert_engine = AlertEngine(self.storage)
+
+        self.stat_nodes = None
+        self.stat_traffic = None
+        self.stat_local = None
+        self.stat_outbound = None
+        self.stat_inbound = None
+        self.stat_external = None
 
         self.traffic_pie = TrafficPieChart()
         self.protocol_bar = ProtocolBarChart()
@@ -1037,12 +1048,13 @@ class MainWindow(QMainWindow):
         classification = self.analyzer.analyze_traffic(seg) if seg.traffic else {
             "LOCAL": 0, "OUTBOUND": 0, "INBOUND": 0, "EXTERNAL": 0
         }
-        self.stat_nodes.update_value(len(seg.nodes))
-        self.stat_traffic.update_value(len(seg.traffic))
-        self.stat_local.update_value(classification["LOCAL"])
-        self.stat_outbound.update_value(classification["OUTBOUND"])
-        self.stat_inbound.update_value(classification["INBOUND"])
-        self.stat_external.update_value(classification["EXTERNAL"])
+        if self.stat_nodes is not None:
+            self.stat_nodes.update_value(len(seg.nodes))
+            self.stat_traffic.update_value(len(seg.traffic))
+            self.stat_local.update_value(classification["LOCAL"])
+            self.stat_outbound.update_value(classification["OUTBOUND"])
+            self.stat_inbound.update_value(classification["INBOUND"])
+            self.stat_external.update_value(classification["EXTERNAL"])
         self.update_dashboard()
 
     def update_dashboard(self):
@@ -1232,11 +1244,22 @@ class MainWindow(QMainWindow):
             self.capture_log.append_log(message)
 
     def on_flow_received(self, flow):
-        if self.current_segment:
-            self.current_segment.add_traffic(flow)
-            self.capture_count_label.setText(
-                f"Captured: {len(self.current_segment.traffic)} flows"
-            )
+        if not self.current_segment:
+            return
+
+        self._flow_counter += 1
+
+        if len(self.current_segment.traffic) >= self._max_flows_in_memory:
+            self.current_segment.traffic = self.current_segment.traffic[-self._max_flows_in_memory // 2:]
+
+        self.current_segment.add_traffic(flow)
+        self.capture_count_label.setText(
+            f"Captured: {len(self.current_segment.traffic)} flows"
+        )
+
+        now = datetime.now()
+        if (now - self._last_gui_update).total_seconds() * 1000 >= self._gui_update_interval_ms or self._flow_counter % 50 == 0:
+            self._last_gui_update = now
             classification = self.analyzer.classify_traffic(self.current_segment, flow)
             color = HackerPalette.PRIMARY
             if classification == "LOCAL":
@@ -1252,11 +1275,9 @@ class MainWindow(QMainWindow):
                 color=color
             )
 
-            # AI pipeline
             try:
                 flow_id = self.storage.insert_flow(self.current_segment.name, flow)
                 features = self.feature_extractor.extract(flow)
-                feature_vector = self.feature_extractor.get_feature_vector(features)
                 self.storage.insert_features(flow_id, features, self.feature_extractor.get_feature_names())
 
                 anomaly_result = self.anomaly_detector.detect(self.current_segment.name, flow, features)
