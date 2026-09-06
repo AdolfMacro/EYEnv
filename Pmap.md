@@ -2,7 +2,7 @@
 ## Project Map & Development Handoff
 
 Last Update:
-2026-08-04
+2026-09-06
 
 Author:
 Mani Kamran
@@ -27,7 +27,6 @@ The project tries to build a visibility layer over a network segment:
 - Analyze local/inbound/outbound behavior
 - Generate security-oriented reports
 
-
 Main idea:
 
 "Understand what exists inside a network before analyzing attacks."
@@ -36,773 +35,532 @@ Main idea:
 
 # 2. Current Architecture
 
+                     UserInterface
+                           |
+                           |
+                           v
+                     NetworkSegment
+                           |
+           --------------------------------
+           |                              |
+           v                              v
+     InterfaceScanner              ScapyCollector
+                                      |
+                                      v
+                                 TrafficFlow
+                                      |
+                                      v
+                            NetworkAnalyzer
+                                      |
+                                      v
+                                 Report
 
-                    UserInterface
-                          |
-                          |
-                          v
-
-                    NetworkSegment
-
-                          |
-          --------------------------------
-
-          |                              |
-
-          v                              v
-
-    ScapyCollector              NetworkAnalyzer
-
-
-          |                              |
-
-          v                              v
-
-     TrafficFlow                  Analysis Report
-
-          |
-          |
-          v
-
-       NetworkNode
-
-
+Interfaces:
+- CLI: `interface/user_interface.py`
+- GUI: `interface/pyqt_interface.py` (PyQt6, hacker-style theme)
 
 ---
 
 # 3. Project Structure
 
+```
+main.py
 
-EYEmpr/
+interface/
+    user_interface.py
+    pyqt_interface.py
 
-│
-├── main.py
-│
-├── interface/
-│   └── user_interface.py
-│
-├── collectors/
-│   ├── scapy_collector.py
-│   └── interface_scanner.py
-│
-├── models/
-│   ├── segment.py
-│   ├── node.py
-│   └── traffic.py
-│
-├── tools/
-│   └── analyzer.py
-│
-└── docs/
-    └── PROJECT_MAP.md
+collectors/
+    scapy_collector.py
+    interface_scanner.py
 
+models/
+    segment.py
+    node.py
+    traffic.py
 
+tools/
+    analyzer.py
+
+docs/
+    Pmap.md
+```
 
 ---
 
 # 4. Component Responsibilities
 
-
 ## main.py
 
-Only application entry point.
+Application entry point.
 
-Should not contain:
-
-- analysis logic
-- packet processing
-- network discovery
-
+- Default mode: PyQt6 GUI
+- CLI mode: `sudo python3 main.py --cli`
+- Checks root privileges before launching GUI or CLI
+- Does not contain analysis logic, packet processing, or network discovery
 
 Flow:
 
 main.py
-
-↓
-
-UserInterface
+  ↓
+UserInterface (CLI or GUI)
 
 ---
 
-# 5. Models
+## interface/user_interface.py
 
+CLI interface.
 
-## NetworkSegment
+Responsibilities:
+- Terminal menu system
+- Segment selection and creation
+- Interface selection for capture
+- Display analysis reports
+- Developer info, repository link, architecture map
 
+---
 
-Responsible for storing selected network information.
+## interface/pyqt_interface.py
 
+PyQt6 graphical interface.
 
-Current data:
+Responsibilities:
+- Segment management sidebar
+- Live statistics cards (Nodes, Flows, Local, Outbound, Inbound, External)
+- Overview tab with segment info, nodes table, traffic table
+- Capture tab with interface selection, ARP discovery, live capture, terminal log
+- Nodes tab with detailed node table
+- Traffic tab with detailed traffic flows
+- Reports tab with export to CSV/TXT
+- Hacker-style dark theme with color-coded traffic classification
 
+Key classes:
+- `MainWindow` — main application window
+- `StatCard` — live statistics card
+- `TerminalLog` — styled terminal output widget
+- `CaptureThread` — background packet capture thread
+- `DiscoverThread` — background ARP discovery thread
+- `NewSegmentDialog` — segment creation dialog
+- `HackerPalette` — theme color constants
+
+---
+
+## collectors/interface_scanner.py
+
+Network interface discovery.
+
+Responsibilities:
+- Enumerate all network interfaces using `psutil`
+- Extract IPv4 address, netmask, and broadcast for each interface
+- Return structured interface list for GUI/CLI selection
+
+---
+
+## collectors/scapy_collector.py
+
+Active network interaction.
+
+Responsibilities:
+- ARP discovery using Scapy `srp()`
+- Live traffic capture using Scapy `sniff()`
+- Convert packets to `TrafficFlow` objects
+- Provide callback-based API for GUI integration
+- Stop flag support for graceful capture termination
+
+Key behaviors:
+- Blocks ARP discovery for networks larger than 256 addresses to prevent excessive broadcast
+- Uses 1-second sniff timeout loops to enable responsive stop/cancel
+- Emits per-flow callbacks for real-time GUI updates
+
+---
+
+## models/segment.py
+
+Network segment data model.
+
+Fields:
 - name
 - cidr
-- network
-- broadcast
-- netmask
-- hosts
 - nodes
 - traffic
 - access
+- netmask
+- network
+- broadcast
+- hosts
 
-
-
-Example:
-
-172.20.10.0/28
-
-
-
----
-
-## NetworkNode
-
-
-Represents discovered devices.
-
-
-Current structure:
-
-
-class NetworkNode:
-
-    ip
-
-    hostname
-
-    status
-
-    mac
-
-    vendor
-
-    services
-
-    last_seen
-
-
-
-Node sources:
-
-1. ARP discovery
-2. Traffic observation
-
+Methods:
+- `add_node(node)`
+- `add_traffic(traffic)`
+- `add_access(access)`
+- `load_traffic(flows)`
+- `get_traffic_count()`
 
 ---
 
-## TrafficFlow
+## models/node.py
 
+Network node data model.
 
-Represents captured communication.
+Fields:
+- ip
+- hostname
+- status
+- mac
+- vendor
+- services
+- last_seen
 
+---
 
-Current fields:
+## models/traffic.py
 
+Traffic flow data model.
+
+Fields:
 - source
 - destination
 - protocol
 - size
 
-
-
 ---
 
-# 6. Collectors
+## tools/analyzer.py
 
-
-## ScapyCollector
-
-
-Responsible for active network interaction.
-
-
-Current responsibilities:
-
-
-## 1. ARP Discovery
-
-
-Uses:
-
-Scapy srp()
-
-Purpose:
-
-Discover alive devices before traffic capture.
-
-
-Example:
-
-
-172.20.10.1
-
-MAC:
-
-a2:fb:c5:96:7b:64
-
-
-
-## 2. Traffic Capture
-
-
-Uses:
-
-Scapy sniff()
-
-
-Converts packets into:
-
-
-TrafficFlow
-
-
-Current captured data:
-
-- IP source
-- IP destination
-- protocol
-- packet size
-
-
-
----
-
-# 7. Analyzer
-
-
-File:
-
-tools/analyzer.py
-
-
+Network analysis engine.
 
 Responsibilities:
+- Traffic classification: LOCAL, OUTBOUND, INBOUND, EXTERNAL
+- Passive node discovery from captured traffic
+- Node details extraction
+- Traffic classification aggregation
+- Full segment analysis report generation
 
+Key methods:
+- `classify_traffic(segment, flow)` — classify single flow
+- `discover_nodes(segment)` — discover nodes from traffic
+- `analyze_nodes(segment)` — extract node details
+- `analyze_traffic(segment)` — aggregate traffic classification
+- `segment_analyze(segment)` — full analysis result
 
-## Traffic Classification
+---
 
+# 5. Traffic Classification
 
 Categories:
 
-
 LOCAL
-
 Source and destination inside segment.
 
-
-
 OUTBOUND
-
 Internal host communicating outside.
 
-
-
 INBOUND
-
 External source communicating with internal host.
 
-
-
 EXTERNAL
-
 Neither side belongs to segment.
 
+---
 
+# 6. Node Discovery
 
+Two sources:
 
+1. ARP discovery — active, via `ScapyCollector.discover_nodes()`
+2. Traffic observation — passive, via `NetworkAnalyzer.discover_nodes()`
 
-
-## Node Discovery From Traffic
-
-
-Function:
-
-discover_nodes(segment)
-
-
-
-Purpose:
-
-Find nodes even if ARP discovery missed them.
-
-
-
-Logic:
-
-
-Traffic Flow
-
-↓
-
-Check source/destination
-
-↓
-
-Is IP inside segment?
-
-↓
-
-Create NetworkNode if new
-
-
-
-Important:
-
-This works even when:
-
-- ARP discovery finds nothing
-- passive traffic exists later
-
-
+Duplicate prevention:
+- GUI checks for existing IPs before adding nodes
+- Analyzer only adds IPs not already in segment.nodes
 
 ---
 
-# 8. Current Workflow
+# 7. Current Workflow
 
+## GUI Workflow
 
-## Step 1
+1. User creates segment via dialog
+   - Selects interface
+   - Auto-fills CIDR, network, broadcast, available hosts
+2. Segment appears in sidebar
+3. User clicks segment to view overview
+4. User starts capture or ARP discovery
+5. Live traffic flows appear in terminal log and tables
+6. Statistics update in real time
+7. User exports nodes/traffic/report to CSV/TXT
 
-User selects:
+## CLI Workflow
 
-Analyze Network Segment
-
-
-
-Example:
-
-wlp8s0
-
-CIDR:
-
-172.20.10.0/28
-
-
-
----
-
-## Step 2
-
-Create:
-
-NetworkSegment
-
-
+1. User selects "Analyze Network Segment"
+2. System shows available networks
+3. User selects network
+4. System creates NetworkSegment
+5. ScapyCollector performs ARP discovery
+6. Analyzer generates initial report
+7. User selects "Capture Traffic"
+8. System captures traffic until keyboard interrupt
+9. Analyzer discovers additional nodes from traffic
+10. Final report displayed
 
 ---
 
-## Step 3
+# 8. Current Problems / TODO
 
-ScapyCollector performs:
+## Resolved
 
-ARP discovery
+- [x] Node discovery duplication — GUI and analyzer now deduplicate
+- [x] Segment analysis order — segment created first, then discovery/capture
+- [x] Better report — GUI provides tables and export; CLI shows classification
+- [x] Large subnet ARP — blocked for networks >256 addresses
+- [x] Capture stop mechanism — timeout-based loop for responsive stop
+- [x] GUI stats sync — live statistics update during capture
+- [x] Logging consistency — all logs use TerminalLog with color coding
 
+## Future Improvements
 
-
-Example result:
-
-
-172.20.10.1
-
-MAC: xx:xx:xx
-
-
-
----
-
-## Step 4
-
-Analyzer generates initial report.
-
-
-
-Example:
-
-
-Nodes:
-
-1
-
-
-Traffic:
-
-0
-
-
+- Hostname and vendor lookup
+- Service detection
+- Port scanning
+- Communication graph generation
+- Network topology visualization
+- Risk analysis and alerts
+- IDS rules integration
+- Plugin system
+- Persistent storage for segments and traffic
 
 ---
 
-## Step 5
+# 9. Security Analysis Roadmap
 
-User captures traffic.
-
-
-
-Example:
-
-
-1235 flows
-
-
-LOCAL:
-
-0
-
-OUTBOUND:
-
-492
-
-INBOUND:
-
-743
-
-EXTERNAL:
-
-0
-
-
-
----
-
-## Step 6
-
-Analyzer discovers additional nodes from traffic.
-
-
-
----
-
-# 9. Current Problems / TODO
-
-
-## High Priority
-
-
-### 1. Node Discovery Duplication
-
-Currently nodes can come from:
-
-- ARP
-- Traffic
-
-
-Need one unified method:
-
-
-merge_nodes()
-
-
-
-Purpose:
-
-Avoid duplicate IP entries.
-
-
-
----
-
-### 2. Segment Analysis Order
-
-
-Current:
-
-
-ARP Discovery
-
-↓
-
-Traffic Capture
-
-↓
-
-Traffic Node Discovery
-
-
-
-Future:
-
-
-Create Segment
-
-↓
-
-Discover Nodes
-
-↓
-
-Capture Traffic
-
-↓
-
-Update Nodes
-
-↓
-
-Analyze
-
-
-
----
-
-### 3. Better Report
-
-
-Current report:
-
-- nodes count
-- traffic classification
-
-
-
-Need:
-
-
-Node table:
-
-IP
-MAC
-Status
-Vendor
-
-
-Traffic table:
-
-Source
-Destination
-Protocol
-Type
-
-
-
----
-
-# 10. Security Analysis Roadmap
-
-
-## Phase 1 (Current)
+## Phase 1 (Completed)
 
 Network Visibility
 
-
 Done:
-
-[x] Interface detection
-
-[x] CIDR calculation
-
-[x] ARP discovery
-
-[x] Packet capture
-
-[x] Traffic classification
-
-[x] Basic reporting
-
-
-
----
+- [x] Interface detection
+- [x] CIDR calculation
+- [x] Segment detection
+- [x] ARP discovery
+- [x] Packet capture
+- [x] Traffic classification
+- [x] Node discovery
+- [x] Basic reporting
+- [x] CLI interface
+- [x] PyQt6 GUI interface
+- [x] Exportable reports
 
 ## Phase 2
 
-
 Node Intelligence
 
-
 Add:
-
-
-- hostname lookup
-- vendor lookup
-- service detection
-- port analysis
-
-
-
----
+- Hostname lookup
+- MAC vendor lookup (OUI database)
+- Service detection via banner grabbing
+- Port scanning
+- OS fingerprinting
+- Passive asset discovery
 
 ## Phase 3
 
-
 Behavior Analysis
 
-
 Add:
-
-
-- suspicious communication detection
-
-- unusual outbound traffic
-
-- unknown devices
-
-- abnormal ports
-
-
-
----
+- Suspicious communication detection
+- Unusual outbound traffic alerts
+- Unknown device detection
+- Abnormal port usage detection
+- DGA/DNS tunneling detection
+- NTP amplification detection
+- Port scan detection
+- Risk scoring engine
 
 ## Phase 4
 
-
 Security Engine
 
+Add:
+- IDS rule integration
+- Attack pattern detection
+- TLS/JA3 fingerprinting
+- Credential extraction from cleartext protocols
+- Pattern-based data leakage detection
+- Alert system
+- GeoIP lookup
+- Threat intelligence integration
 
-Possible modules:
+## Phase 5
 
+Advanced Analysis
 
-- IDS rules
-
-- attack pattern detection
-
-- risk scoring
-
-- alerts
-
-
-
----
-
-# 11. Design Principles
-
-
-IMPORTANT:
-
-
-Do not put everything inside UserInterface.
-
-
-
-Keep separation:
-
-
-Interface:
-
-User interaction
-
-
-Collector:
-
-Network interaction
-
-
-Model:
-
-Data storage
-
-
-Analyzer:
-
-Logic
-
-
-Report:
-
-Output
-
-
+Add:
+- PCAP save/load with full metadata
+- Capture filters (BPF)
+- Multi-interface capture
+- Deep packet inspection (L2–L7)
+- TCP stream reassembly
+- DNS/DHCP/SIP protocol parsers
+- VLAN and tunnel decapsulation
+- File extraction from HTTP/FTP/SMB
+- Email and certificate extraction
+- Network topology visualization
+- Communication graphs
+- Plugin system
+- REST API
+- Persistent storage
+- JSON/XML/Excel export
 
 ---
 
-# 12. Current Known Working Test
+# 10. Complete Sniffing Feature Set
 
+## Capture Features
+- Live packet capture
+- PCAP file save/load
+- Capture filters (BPF syntax)
+- Multi-interface simultaneous capture
+- Rolling capture buffers
+- High-performance packet ingestion
+
+## Protocol Support
+- Ethernet / 802.11
+- IPv4 / IPv6
+- TCP / UDP / ICMP
+- DHCP / DHCPv6
+- DNS / DNSSEC
+- HTTP / HTTPS
+- TLS 1.0–1.3
+- QUIC / HTTP3 / gRPC
+- FTP / SFTP / FTPS
+- SSH
+- SIP / VoIP
+- NTP / SNMP
+- SMTP / IMAP / POP3
+- ARP
+- 802.1Q VLAN
+- GRE / VXLAN / Geneve
+
+## Traffic Analysis
+- Deep packet inspection (L2–L7)
+- Flow reconstruction
+- Conversation tracking
+- Protocol distribution
+- Top talkers
+- Bandwidth monitoring
+- Packet timeline
+- TCP stream reassembly
+- UDP stream analysis
+- Fragmentation detection
+- Checksum validation
+
+## Node Intelligence
+- Hostname lookup
+- MAC vendor lookup
+- Service detection
+- Port scanning
+- OS fingerprinting
+- Passive discovery
+
+## Security Features
+- Anomaly detection
+- Suspicious traffic detection
+- Port scan detection
+- DGA detection
+- Risk scoring
+- Alerting
+- JA3/JA4 fingerprinting
+- TLS certificate inspection
+- Credential extraction
+- Pattern-based leakage detection
+
+## Forensics
+- PCAP offline analysis
+- File extraction
+- Email extraction
+- Certificate extraction
+- Keyword search
+- Packet carving
+- GeoIP lookup
+
+## Visualization
+- Network topology
+- Traffic graphs
+- Protocol hierarchy
+- Conversation maps
+
+## System Features
+- Persistent storage
+- Plugin system
+- REST API
+- Multi-format export
+- Alert system
+- Automated reports
+
+---
+
+# 10. Design Principles
+
+- Do not put everything inside UserInterface
+- Keep separation:
+  - Interface: user interaction
+  - Collector: network interaction
+  - Model: data storage
+  - Analyzer: logic
+  - Report: output
+
+---
+
+# 11. Known Working Configuration
 
 Interface:
-
 wlp8s0
 
-
 Network:
-
 172.20.10.0/28
 
-
-
 ARP Result:
-
 172.20.10.1
 
-
-
 Traffic Capture:
-
 1235 flows
 
-
-
 Classification:
-
-
-OUTBOUND:
-
-492
-
-
-INBOUND:
-
-743
-
-
-LOCAL:
-
-0
-
-
-EXTERNAL:
-
-0
-
-
+OUTBOUND: 492
+INBOUND: 743
+LOCAL: 0
+EXTERNAL: 0
 
 ---
 
-# 13. Next Development Session
+# 12. Next Development Session
 
-
-First tasks:
-
-
-1. Review current files:
-
-- node.py
-- segment.py
-- traffic.py
-- scapy_collector.py
-- analyzer.py
-
-
-2. Fix node merging system.
-
-
-3. Improve report output.
-
-
-4. Prepare first GitHub version.
-
-
-5. Add README explaining architecture.
-
-
+1. Add hostname lookup for discovered nodes
+2. Add vendor lookup using MAC OUI database
+3. Implement service detection via banner grabbing
+4. Add port scanning module
+5. Design communication graph data structure
+6. Add persistent storage for segments and traffic
 
 ---
 
 # Current Project State
 
 Status:
+Ready for first GitHub release
 
-Prototype / MVP
-
-
-Goal for first GitHub release:
-
+Goal achieved:
 A working network visibility analyzer with:
-
 - segment detection
 - ARP discovery
 - packet capture
 - node discovery
 - traffic classification
 - CLI report
+- PyQt6 GUI interface
+- Exportable reports
 
-
-در نسخه بعدی EYE Network Vision، ابزار از حالت منوی ساده خارج شده و یک رابط CLI واقعی دریافت می‌کند؛ به شکلی که کاربر بتواند با دستورها عملیات مختلف را اجرا کند. تمام ترافیک‌های Capture شده باید ذخیره‌سازی شوند تا بعداً بدون نیاز به Capture مجدد داخل CLI قابل بررسی، فیلتر و تحلیل باشند و امکان Export گزارش‌ها و داده‌ها نیز فراهم شود. ساختار پروژه باید به سمت یک Network Visibility Platform کوچک حرکت کند؛ به طوری که هر Segment شناسایی‌شده دارای اطلاعات کامل شبکه، Broadcast، Host Range، Nodeهای فعال و وضعیت آن‌ها باشد. هر Node باید قابلیت بررسی جداگانه داشته باشد و اطلاعاتی مانند IP، MAC، Vendor، سرویس‌های مشاهده‌شده، آخرین زمان مشاهده و Traffic مربوط به آن ذخیره شود. همچنین تمام Segmentها و Nodeها باید قابلیت Query و تحلیل مستقل داشته باشند تا کاربر بتواند وضعیت شبکه، ارتباطات، Flowها و رفتارهای مشاهده‌شده را در هر زمان از طریق CLI بررسی کند.
+Next phase:
+Node intelligence and behavior analysis
 
 END OF MAP

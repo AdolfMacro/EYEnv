@@ -3,6 +3,7 @@ class NetworkSegment:
     def __init__(self, name, cidr):
         self.name = name
         self.cidr = cidr
+        self.interface = None
         self.nodes = []
         self.traffic = []
         self.access = []

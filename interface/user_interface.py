@@ -244,6 +244,7 @@ class UserInterface:
                     selected["cidr"]
                 )
 
+                self.segment.interface = selected["name"]
 
                 self.segment.netmask = selected["netmask"]
                 self.segment.network = selected["network"]

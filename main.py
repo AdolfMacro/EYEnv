@@ -1,10 +1,13 @@
+import sys
+from os import name, geteuid
+
 from interface.user_interface import UserInterface
-from os import name , geteuid 
-def check_root():
 
-    if name != "nt" and geteuid() != 0:
 
-        print("""
+def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "--cli":
+        if name != "nt" and geteuid() != 0:
+            print("""
 ========================================
         EYE Network Vision
 ========================================
@@ -19,16 +22,13 @@ Please run:
 sudo python3 main.py
 
 ========================================
-        """)
-
-        exit(1)
-
-
-def main():
-    check_root()
-    ui = UserInterface()
-
-    ui.start()
+            """)
+            sys.exit(1)
+        ui = UserInterface()
+        ui.start()
+    else:
+        from interface.pyqt_interface import run_gui
+        run_gui()
 
 
 if __name__ == "__main__":

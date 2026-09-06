@@ -16,7 +16,7 @@ class ScapyCollector:
 
 
 
-    def discover_nodes(self, segment):
+    def discover_nodes(self, segment, on_node=None):
 
         nodes = []
 
@@ -26,11 +26,12 @@ class ScapyCollector:
         )
 
 
-        print("""
-========================================
-        Network Discovery
-========================================
-""")
+        if network.num_addresses > 256:
+
+            raise ValueError(
+                f"Network {segment.cidr} is too large for ARP discovery. "
+                f"Use a smaller subnet."
+            )
 
 
         arp_request = Ether(
@@ -74,14 +75,9 @@ class ScapyCollector:
             nodes.append(node)
 
 
-            print(
-                f"{node.ip} | MAC: {node.mac}"
-            )
+            if on_node:
 
-
-        print("""
-========================================
-""")
+                on_node(node)
 
 
         return nodes
@@ -89,37 +85,54 @@ class ScapyCollector:
 
 
 
-    def capture(self):
+    def capture(self, on_flow=None, stop_flag=None):
 
         flows = []
 
+        active = True
 
-        print("""
-========================================
-        Live Traffic Capture
-========================================
+        if stop_flag is not None:
 
-CTRL + C to stop
+            active = stop_flag()
 
-========================================
-""")
+
+        def packet_callback(packet):
+
+            flow = self.packet_to_flow(packet)
+
+
+            if flow:
+
+                flows.append(flow)
+
+                if on_flow:
+
+                    on_flow(flow)
+
 
 
         try:
 
-            sniff(
+            while active:
 
-                iface=self.interface,
+                sniff(
 
-                prn=lambda packet:
-                    self.process_packet(
-                        packet,
-                        flows
-                    ),
+                    iface=self.interface,
 
-                store=False
+                    prn=packet_callback,
 
-            )
+                    store=False,
+
+                    timeout=1,
+
+                    stop_filter=(lambda p: not active) if stop_flag else None
+
+                )
+
+
+                if stop_flag is not None:
+
+                    active = stop_flag()
 
 
         except KeyboardInterrupt:
@@ -130,30 +143,6 @@ CTRL + C to stop
 
 
         return flows
-
-
-
-
-    def process_packet(self, packet, flows):
-
-        flow = self.packet_to_flow(packet)
-
-
-        if flow:
-
-            flows.append(flow)
-
-
-            print(
-
-                f"{flow.source} --> "
-                f"{flow.destination} | "
-                f"Protocol: {flow.protocol} | "
-                f"Size: {flow.size}"
-
-            )
-
-
 
     def packet_to_flow(self, packet):
 
