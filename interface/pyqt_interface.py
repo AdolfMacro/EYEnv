@@ -21,6 +21,9 @@ from models.traffic import TrafficFlow
 from collectors.interface_scanner import InterfaceScanner
 from collectors.scapy_collector import ScapyCollector
 from tools.analyzer import NetworkAnalyzer
+from tools.storage import DataStore
+from features import FeatureExtractor
+from ai import AnomalyDetector, AlertEngine
 import ipaddress
 
 
@@ -425,6 +428,11 @@ class MainWindow(QMainWindow):
         self.capture_thread = None
         self.discover_thread = None
 
+        self.storage = DataStore()
+        self.feature_extractor = FeatureExtractor()
+        self.anomaly_detector = AnomalyDetector(self.storage)
+        self.alert_engine = AlertEngine(self.storage)
+
         self.traffic_pie = TrafficPieChart()
         self.protocol_bar = ProtocolBarChart()
         self.bandwidth_timeline = BandwidthTimeline()
@@ -823,6 +831,44 @@ class MainWindow(QMainWindow):
         reports_layout.addStretch()
         right_panel.addTab(self.reports_tab, "Reports")
 
+        # Alerts Tab
+        self.alerts_tab = QWidget()
+        alerts_layout = QVBoxLayout(self.alerts_tab)
+        alerts_layout.setContentsMargins(16, 16, 16, 16)
+        alerts_layout.setSpacing(12)
+
+        alerts_group = QGroupBox("Security Alerts")
+        alerts_group_layout = QVBoxLayout(alerts_group)
+        alerts_group_layout.setContentsMargins(16, 20, 16, 16)
+        alerts_group_layout.setSpacing(8)
+
+        self.alerts_table = QTableWidget()
+        self.alerts_table.setColumnCount(5)
+        self.alerts_table.setHorizontalHeaderLabels(
+            ["Severity", "Category", "Description", "Score", "Time"]
+        )
+        self.alerts_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.alerts_table.verticalHeader().setVisible(False)
+        self.alerts_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.alerts_table.setAlternatingRowColors(True)
+        self.alerts_table.setStyleSheet(f"""
+            QTableWidget {{
+                alternate-background-color: {HackerPalette.PANEL};
+            }}
+        """)
+        alerts_group_layout.addWidget(self.alerts_table)
+
+        alerts_layout.addWidget(alerts_group)
+
+        btn_layout = QHBoxLayout()
+        btn_ack = QPushButton("Acknowledge Selected")
+        btn_ack.clicked.connect(self.acknowledge_alert)
+        btn_layout.addWidget(btn_ack)
+        btn_layout.addStretch()
+        alerts_layout.addLayout(btn_layout)
+
+        right_panel.addTab(self.alerts_tab, "Alerts")
+
         self.statusBar().showMessage("Ready")
 
         self.segment_list.itemClicked.connect(self.load_segment)
@@ -1010,6 +1056,40 @@ class MainWindow(QMainWindow):
         self.bandwidth_timeline.update_data(seg.traffic)
         self.node_activity.update_data(seg.nodes)
 
+    def update_alerts(self):
+        alerts = self.alert_engine.get_recent_alerts(limit=200)
+        self.alerts_table.setRowCount(len(alerts))
+        severity_colors = {
+            "LOW": HackerPalette.TEXT_DIM,
+            "MEDIUM": HackerPalette.WARNING,
+            "HIGH": HackerPalette.DANGER,
+            "CRITICAL": HackerPalette.DANGER,
+        }
+        for row, alert in enumerate(alerts):
+            self.alerts_table.setItem(row, 0, QTableWidgetItem(alert.get("severity", "")))
+            severity = alert.get("severity", "")
+            color = severity_colors.get(severity, HackerPalette.TEXT)
+            self.alerts_table.item(row, 0).setForeground(QColor(color))
+            self.alerts_table.setItem(row, 1, QTableWidgetItem(alert.get("category", "")))
+            self.alerts_table.setItem(row, 2, QTableWidgetItem(alert.get("description", "")))
+            self.alerts_table.setItem(row, 3, QTableWidgetItem(str(alert.get("score", 0.0))))
+            self.alerts_table.setItem(row, 4, QTableWidgetItem(alert.get("timestamp", "")))
+
+    def acknowledge_alert(self):
+        current_row = self.alerts_table.currentRow()
+        if current_row < 0:
+            return
+        item = self.alerts_table.item(current_row, 4)
+        if not item:
+            return
+        timestamp = item.text()
+        alerts = self.alert_engine.get_recent_alerts(limit=200)
+        for alert in alerts:
+            if alert.get("timestamp") == timestamp:
+                self.storage.acknowledge_alert(alert.get("id", 0))
+                break
+        self.update_alerts()
+
     def start_capture(self):
         if not self.current_segment:
             QMessageBox.warning(self, "Warning", "Select a segment first")
@@ -1088,6 +1168,23 @@ class MainWindow(QMainWindow):
                 f"{flow.source} -> {flow.destination} | Proto: {flow.protocol} | Size: {flow.size} | [{classification}]",
                 color=color
             )
+
+            # AI pipeline
+            try:
+                flow_id = self.storage.insert_flow(self.current_segment.name, flow)
+                features = self.feature_extractor.extract(flow)
+                feature_vector = self.feature_extractor.get_feature_vector(features)
+                self.storage.insert_features(flow_id, features, self.feature_extractor.get_feature_names())
+
+                anomaly_result = self.anomaly_detector.detect(self.current_segment.name, flow, features)
+                alerts = self.alert_engine.evaluate(
+                    self.current_segment.name, flow, features, anomaly_result
+                )
+                if alerts:
+                    self.update_alerts()
+            except Exception as e:
+                self.capture_log.append_error(f"AI error: {e}")
+
             self.update_stats()
 
     def on_capture_finished(self, flows):

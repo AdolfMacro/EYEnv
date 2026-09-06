@@ -561,6 +561,302 @@ A working network visibility analyzer with:
 - Exportable reports
 
 Next phase:
-Node intelligence and behavior analysis
+AI-powered behavior analysis and intrusion detection
+
+---
+
+# 13. AI Infrastructure Roadmap
+
+## Overview
+
+Transform EYE Network Vision into an intelligent network security platform that:
+- Learns normal behavior patterns
+- Detects anomalies and intrusions
+- Inspects suspicious payloads
+- Generates actionable alerts
+
+## Phase 1 — Foundation: Feature Engineering & Storage
+
+### 1.1 Feature Extractor
+**Location:** `features/extractor.py`  
+**Input:** `TrafficFlow` objects  
+**Output:** Numerical feature vectors
+
+Features to extract:
+- `packet_size` — total bytes
+- `protocol` — IP protocol number
+- `src_port` / `dst_port` — transport layer ports
+- `duration` — flow duration (if available)
+- `byte_rate` — bytes per second
+- `packet_count` — number of packets in flow
+- `payload_entropy` — randomness of payload
+- `is_encrypted` — TLS/SSL detection
+- `tls_version` — if applicable
+- `ja3_hash` — TLS fingerprint
+- `dns_query_length` — for DNS flows
+- `http_method` — for HTTP flows
+- `has_credentials` — regex match for passwords/tokens
+
+Output format:
+```python
+{
+    "flow_id": str,
+    "timestamp": str,
+    "features": [64, 6, 52341, 443, 0.05, 1280, 1, 4.2, ...],
+    "feature_names": ["packet_size", "protocol", ...],
+    "metadata": {"src_ip": "...", "dst_ip": "..."}
+}
+```
+
+### 1.2 Data Store
+**Location:** `tools/storage.py`  
+**Backend:** SQLite (start) → TimescaleDB (future)
+
+Tables:
+- `flows` — raw captured flows
+- `features` — extracted feature vectors
+- `alerts` — generated alerts
+- `profiles` — behavioral baselines per host
+- `labels` — user feedback (true/false positive)
+
+Schema:
+```sql
+CREATE TABLE flows (
+    id INTEGER PRIMARY KEY,
+    segment_id TEXT,
+    source TEXT,
+    destination TEXT,
+    protocol INTEGER,
+    size INTEGER,
+    timestamp TEXT,
+    classification TEXT
+);
+
+CREATE TABLE features (
+    id INTEGER PRIMARY KEY,
+    flow_id INTEGER,
+    features TEXT,  -- JSON array
+    feature_names TEXT,  -- JSON array
+    timestamp TEXT
+);
+
+CREATE TABLE alerts (
+    id INTEGER PRIMARY KEY,
+    severity TEXT,  -- LOW/MEDIUM/HIGH/CRITICAL
+    category TEXT,  -- anomaly/payload/behavior
+    description TEXT,
+    flow_id INTEGER,
+    score REAL,
+    timestamp TEXT,
+    acknowledged BOOLEAN DEFAULT FALSE
+);
+
+CREATE TABLE profiles (
+    id INTEGER PRIMARY KEY,
+    ip TEXT UNIQUE,
+    baseline TEXT,  -- JSON: {mean_packet_size, std_packet_size, ...}
+    last_seen TEXT,
+    flow_count INTEGER
+);
+
+CREATE TABLE labels (
+    id INTEGER PRIMARY KEY,
+    flow_id INTEGER,
+    label TEXT,  -- normal/anomalous
+    feedback TEXT,
+    timestamp TEXT
+);
+```
+
+### 1.3 API Layer
+**Location:** `api/`  
+**Framework:** FastAPI
+
+Endpoints (v0.1):
+- `GET /health` — health check
+- `POST /api/v1/flows` — ingest new flow
+- `POST /api/v1/flows/batch` — batch ingest
+- `GET /api/v1/flows` — query flows with filters
+- `GET /api/v1/features/{flow_id}` — get features for a flow
+- `GET /api/v1/alerts` — get recent alerts
+- `POST /api/v1/alerts/{alert_id}/ack` — acknowledge alert
+- `GET /api/v1/profiles` — get all behavioral profiles
+- `POST /api/v1/profiles/{ip}/rebuild` — rebuild profile for host
+
+## Phase 2 — Behavioral Profiling & Anomaly Detection
+
+### 2.1 Behavioral Profiler
+**Location:** `ai/profiler.py`
+
+Per-host baseline:
+- `mean_packet_size`, `std_packet_size`
+- `common_ports` — top 10 ports
+- `common_protocols` — protocol distribution
+- `active_hours` — histogram of activity by hour
+- `frequent_partners` — top 10 communicating IPs
+- `avg_byte_rate` — average bytes per second
+- `connection_patterns` — inbound/outbound ratio
+
+Update strategy:
+- Initial baseline after 100 flows
+- Exponential moving average for updates
+- Rebuild on significant change detection
+
+### 2.2 Anomaly Detector
+**Location:** `ai/anomaly.py`
+
+Models:
+1. **Statistical Detector**
+   - Z-score for packet size, byte rate, port count
+   - Threshold: 3σ default
+   - Output: anomaly score (0-1)
+
+2. **Isolation Forest**
+   - Scikit-learn implementation
+   - Features: packet_size, protocol, ports, entropy
+   - Contamination: 0.1 (10% expected anomalies)
+   - Retrain: every 1000 new flows
+
+3. **Rule-based Detector**
+   - Port scan detection: >10 unique ports in 60s
+   - DNS tunneling: high DNS query entropy + large responses
+   - Unusual port: well-known port used unexpectedly
+   - Off-hours activity: outside normal business hours
+
+Output:
+```python
+{
+    "flow_id": str,
+    "anomaly_score": 0.85,  # 0-1
+    "detectors": {
+        "statistical": {"score": 0.9, "triggered": True},
+        "isolation_forest": {"score": 0.7, "triggered": True},
+        "rule_based": {"score": 1.0, "triggered": True}
+    },
+    "is_anomaly": True,
+    "reasons": ["Unusual port", "Off-hours activity"]
+}
+```
+
+## Phase 3 — Deep Packet Inspection & Alerting
+
+### 3.1 Payload Inspector
+**Location:** `ai/inspector.py`
+
+Capabilities:
+- TLS/JA3 fingerprint extraction
+- DNS query analysis (length, entropy, TTL)
+- HTTP header inspection (user-agent, methods)
+- Credential pattern detection (regex for passwords, tokens)
+- Payload entropy calculation
+- Suspicious string matching
+
+### 3.2 Alert Engine
+**Location:** `ai/alerts.py`
+
+Severity levels:
+- **LOW** — minor deviation, informational
+- **MEDIUM** — suspicious pattern, needs review
+- **HIGH** — likely malicious, immediate attention
+- **CRITICAL** — confirmed attack, action required
+
+Scoring:
+- Each detector contributes points
+- Correlation: multiple medium alerts → HIGH
+- Time decay: old alerts lose severity
+
+### 3.3 GUI Integration
+**Location:** `interface/pyqt_interface.py`
+
+New tabs/widgets:
+- `AlertsTab` — list of active alerts with severity colors
+- `AlertDetailDialog` — drill-down into alert details
+- `PayloadViewer` — hex/ASCII view of suspicious packet
+- `ProfileViewer` — behavioral baseline for selected host
+
+Real-time updates:
+- New alerts appear in sidebar
+- Sound notification for HIGH/CRITICAL
+- Auto-scroll to latest alert
+
+## Phase 4 — Advanced ML & Feedback
+
+### 4.1 Model Management
+**Location:** `ai/models/`
+
+- MLflow integration for model versioning
+- A/B testing framework
+- Model performance metrics (precision, recall, F1)
+- Auto-retraining pipeline (daily/weekly)
+
+### 4.2 Feedback Loop
+**Location:** `interface/pyqt_interface.py` + `ai/feedback.py`
+
+UI:
+- Right-click alert → "Mark as False Positive"
+- Right-click alert → "Mark as True Positive"
+- Bulk labeling for training data
+
+Backend:
+- Store labels in `labels` table
+- Retrain model when enough new labels
+- Track model improvement over time
+
+### 4.3 REST API Complete
+**Location:** `api/`
+
+- WebSocket for real-time alerts
+- Authentication (JWT)
+- Rate limiting
+- OpenAPI documentation
+
+## Implementation Order
+
+1. **Feature Extractor** (`features/extractor.py`) — 2 days
+2. **Data Store** (`tools/storage.py`) — 1 day
+3. **API Layer** (`api/main.py`) — 1 day
+4. **Behavioral Profiler** (`ai/profiler.py`) — 2 days
+5. **Anomaly Detector** (`ai/anomaly.py`) — 2 days
+6. **Payload Inspector** (`ai/inspector.py`) — 1 day
+7. **Alert Engine** (`ai/alerts.py`) — 1 day
+8. **GUI Integration** (alerts tab) — 2 days
+9. **Model Management** (optional) — 3 days
+10. **Feedback Loop** (optional) — 2 days
+
+**Total estimated:** 14-17 days for core AI infrastructure
+
+---
+
+# 14. Technical Decisions
+
+## ML Framework
+- **Scikit-learn** — Isolation Forest, Random Forest, statistical methods
+- **No deep learning initially** — too complex, need labeled data
+- **Future:** TensorFlow/PyTorch for LSTM/Transformer
+
+## Database
+- **Start:** SQLite — simple, no extra infrastructure
+- **Scale:** TimescaleDB — time-series optimized, PostgreSQL compatible
+
+## API
+- **FastAPI** — async, auto-documentation, type hints
+- **Uvicorn** — ASGI server
+- **WebSocket** — real-time alerts
+
+## Deployment
+- Docker container for AI services
+- Separate from capture GUI for scalability
+- Optional: Kubernetes for production
+
+---
+
+# 15. Success Metrics
+
+- **False Positive Rate:** < 20% after 1 week of learning
+- **Detection Rate:** > 80% for known attack patterns
+- **Latency:** < 1s from packet capture to alert
+- **Usability:** Analyst can triage alerts in < 5 minutes
+
+---
 
 END OF MAP
